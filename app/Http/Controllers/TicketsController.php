@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 class TicketsController extends Controller
@@ -22,6 +23,33 @@ class TicketsController extends Controller
     ];
 
     public $tickets = array();
+
+    public function __construct()
+    {
+        if (Storage::exists('tickets.json')) {
+
+            $stored = Storage::get('tickets.json');
+            $tickets = json_decode($stored, true);
+       
+            $this->tickets = $tickets;
+       
+        }
+        
+    }
+
+     /**
+     * Get all tickets
+     * 
+     * 
+     * @return JSON with the tickets
+     */
+    public function index()
+    {
+        return response()->json([
+            'data' => $this->tickets
+        ], 200);
+
+    }
 
     /**
      * Add a new ticket
@@ -66,8 +94,9 @@ class TicketsController extends Controller
     {
 
         $rules = [
+            'action'    => 'required|in:seat,status',
             'ticket'    => 'required',
-            'seat'      => 'required',
+            'value'     => 'required',
         ];
 
         $validator = Validator::make($request->all(), $rules);
@@ -77,7 +106,9 @@ class TicketsController extends Controller
         }
 
         $targetTicket = $request->ticket;
-        $seat = $request->seat;
+        $action = $request->action;
+        $value = $request->value;
+        //$seat = $request->seat;
 
         if (!$this->ticketExists($targetTicket)) {
 
@@ -87,11 +118,19 @@ class TicketsController extends Controller
 
         }
 
-        $this->tickets = array_map(function($ticket) use ($targetTicket, $seat){
-            if ($ticket['id'] === $targetTicket) {
-                $ticket['seat'] = $seat;
+        //Find and replace ticket
+        $this->tickets = array_map(function($ticket) use ($targetTicket, $action, $value){
+            
+            if ($ticket['id'] == $targetTicket) {
+                $ticket[$action] = $value;
             }
+
+            return $ticket;
+           
         }, $this->tickets);
+
+        //Save tickets in JSON file
+        $this->saveTickets();
 
         return response()->json([
             'sucess' => true
@@ -129,10 +168,11 @@ class TicketsController extends Controller
     private function makeTicket(Request $request)
     {
         $ticket = [
-            'id' => uniqid('TICKET'),
-            'flight' => $this->flights[$request->flight], 
-            'seat' => rand(1, 32),
-            'passport' => $request->passport
+            'id'        => uniqid('TICKET'),
+            'flight'    => $this->flights[$request->flight], 
+            'seat'      => rand(1, 32),
+            'passport'  => $request->passport,
+            'status'    => 'active'
         ];
  
         return $ticket;
@@ -148,5 +188,16 @@ class TicketsController extends Controller
     private function addTicket($ticket)
     {
         $this->tickets[] = $ticket;
+
+        $this->saveTickets();
+    }
+
+    private function saveTickets()
+    {
+
+        $storageTickets = json_encode($this->tickets);
+
+        Storage::disk('local')->put('tickets.json', $storageTickets);
+
     }
 }
